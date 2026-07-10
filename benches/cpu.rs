@@ -6,7 +6,7 @@ use criterion::measurement::WallTime;
 use criterion::{
     criterion_group, criterion_main, BatchSize, BenchmarkGroup, BenchmarkId, Criterion, Throughput,
 };
-use thin_vec::ThinVec as JackVec;
+use jackvec::ThinVec as JackVec;
 
 use support::{
     build_growing, build_nested, build_reserved, fill_vector, sum_nested, sum_vector, BenchVector,

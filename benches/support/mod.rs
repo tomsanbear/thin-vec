@@ -1,4 +1,4 @@
-use thin_vec::ThinVec as JackVec;
+use jackvec::ThinVec as JackVec;
 
 pub const NESTED_VECTOR_COUNT: usize = 10_000;
 pub const OPERATION_SIZES: &[usize] = &[1, 4, 1_024];

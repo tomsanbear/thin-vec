@@ -6,7 +6,7 @@ use std::hint::black_box;
 use std::mem::size_of;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use thin_vec::ThinVec as JackVec;
+use jackvec::ThinVec as JackVec;
 
 use support::{
     build_growing, build_nested, build_reserved, BenchVector, NestedWorkload, NESTED_VECTOR_COUNT,
