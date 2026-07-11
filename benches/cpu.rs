@@ -381,9 +381,11 @@ fn from_fn_exact(c: &mut Criterion) {
         group.throughput(Throughput::Elements(len as u64));
         group.bench_function(BenchmarkId::from_parameter(len), |bencher| {
             bencher.iter(|| {
-                black_box(JackVec::from_fn(black_box(len), |index| {
-                    black_box(index as u64)
-                }))
+                black_box(
+                    (0..black_box(len))
+                        .map(|index| black_box(index as u64))
+                        .collect::<JackVec<_>>(),
+                )
             });
         });
     }
