@@ -53,7 +53,7 @@ The central hypothesis is:
 
 ### Exact `from_fn` construction (`perf/from-fn-exact`)
 
-- Status: pre-registered; baseline harness pending
+- Status: rejected; API and temporary benchmark reverted
 - Baseline implementation commit: `fe7aa89`
 - Hypothesis: callers that know final length and generate each element by index can
   initialize one exact JackVec allocation directly, carry initialized length inside
@@ -79,6 +79,29 @@ The central hypothesis is:
 - Scope: one constructor, two temporary benchmark sizes, and focused lifecycle
   tests. Do not combine repeat-fill specialization, growth policy, inline scratch,
   pointer tagging, or sqlparsers integration.
+- Baseline harness commit: `c012e13`
+- Candidate commit: `2ccb301` (reverted by `61b6ebb`)
+- Primary result: failed. At 1,024 elements, `from_fn` improved only 0.38%, from
+  433.60 ns to 432.36 ns (range -0.54%..-0.06%, interval
+  -0.49%..-0.17%). This is inside the calibrated 1% envelope and far below the
+  required 10%; do not promote the interval excluding zero into a useful win.
+- Secondary result: four elements improved 13.10%, from 12.63 ns to 10.97 ns,
+  with every round favorable and interval -15.80%..-12.24%. The declared
+  secondary cannot override the failed primary.
+- Mechanism result: accepted guarded `Extend` already reserves from the range/map
+  lower bound, carries initialized length locally, vectorizes the large loop, and
+  publishes once. `from_fn` therefore removes only fixed iterator/adapter setup,
+  which is material at four elements but disappears at 1,024. Complete `.text`
+  shrank 96 bytes and the executable shrank 136 bytes, so code size was not the
+  rejection cause.
+- Correctness result: the candidate passed exact capacity, ascending indices,
+  empty non-invocation, ZST, 64-byte alignment, capacity rejection before generator
+  invocation, owning prefix cleanup on generator panic, all feature/no-std/MSRV/
+  Clippy/docs, and strict-provenance Tree Borrows Miri gates.
+- Decision: revert the redundant public API and remove the temporary benchmark.
+  Exact small construction is already served by accepted array and literal-macro
+  paths; do not add a broad constructor whose primary large-workload premise failed.
+- Artifact: `catalyzed-builder:~/thin-vec/benchmark-results/jackvec-from-fn-20260711`.
 
 ### Exact macro construction (`perf/exact-macro-construction`)
 
