@@ -359,6 +359,50 @@ impl<T> JackVec<T> {
         }
     }
 
+    /// Constructs a `JackVec<T>` of exactly `len` elements by calling `f` with
+    /// each index in ascending order.
+    ///
+    /// If `f` panics, every element it previously returned is dropped exactly
+    /// once before the allocation is released.
+    #[inline]
+    pub fn from_fn<F>(len: usize, mut f: F) -> JackVec<T>
+    where
+        F: FnMut(usize) -> T,
+    {
+        if len == 0 {
+            return JackVec::new();
+        }
+
+        let mut vec = JackVec::<T>::with_capacity(len);
+        let data: *mut T = vec.data_raw();
+
+        struct SetLenOnDrop<'a, T> {
+            vec: &'a mut JackVec<T>,
+            initialized: usize,
+        }
+
+        impl<T> Drop for SetLenOnDrop<'_, T> {
+            fn drop(&mut self) {
+                unsafe {
+                    self.vec.set_len_non_singleton(self.initialized);
+                }
+            }
+        }
+
+        let mut guard = SetLenOnDrop {
+            vec: &mut vec,
+            initialized: 0,
+        };
+        while guard.initialized < len {
+            unsafe {
+                ptr::write(data.add(guard.initialized), f(guard.initialized));
+            }
+            guard.initialized += 1;
+        }
+        drop(guard);
+        vec
+    }
+
     // Accessor conveniences
 
     fn ptr(&self) -> *mut Header {
@@ -3287,6 +3331,74 @@ mod std_tests {
         }));
         assert!(result.is_err());
         assert_eq!(drops.get(), 1);
+    }
+
+    #[test]
+    fn test_from_fn_exact_construction() {
+        let mut visited = JackVec::new();
+        let values = JackVec::from_fn(4, |index| {
+            visited.push(index);
+            index * 10
+        });
+        assert_eq!(visited, [0, 1, 2, 3]);
+        assert_eq!(values, [0, 10, 20, 30]);
+        assert_eq!(values.capacity(), 4);
+
+        let empty = JackVec::<u8>::from_fn(0, |_| panic!("empty generator called"));
+        assert!(empty.is_empty());
+
+        let zst = JackVec::from_fn(8, |_| ());
+        assert_eq!(zst.len(), 8);
+
+        #[repr(align(64))]
+        struct Aligned(usize);
+        let aligned = JackVec::from_fn(2, Aligned);
+        assert_eq!(aligned.as_ptr() as usize % 64, 0);
+        assert_eq!(aligned[1].0, 1);
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn test_from_fn_panic_drops_initialized_prefix() {
+        use alloc::rc::Rc;
+        use core::cell::Cell;
+
+        struct Counted(Rc<Cell<usize>>);
+        impl Drop for Counted {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let drops = Rc::new(Cell::new(0));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe({
+            let drops = Rc::clone(&drops);
+            move || {
+                let _ = JackVec::from_fn(4, |index| {
+                    if index == 2 {
+                        panic!("generator panic");
+                    }
+                    Counted(Rc::clone(&drops))
+                });
+            }
+        }));
+        assert!(result.is_err());
+        assert_eq!(drops.get(), 2);
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", target_pointer_width = "64"))]
+    fn test_from_fn_rejects_capacity_before_generator() {
+        use core::cell::Cell;
+
+        let called = Cell::new(false);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = JackVec::from_fn(MAX_CAP + 1, |_| {
+                called.set(true);
+            });
+        }));
+        assert!(result.is_err());
+        assert!(!called.get());
     }
 
     #[test]
