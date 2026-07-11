@@ -51,6 +51,35 @@ The central hypothesis is:
 
 ## Experiment record
 
+### Exact `from_fn` construction (`perf/from-fn-exact`)
+
+- Status: pre-registered; baseline harness pending
+- Baseline implementation commit: `fe7aa89`
+- Hypothesis: callers that know final length and generate each element by index can
+  initialize one exact JackVec allocation directly, carry initialized length inside
+  one guarded method, and publish once. This may remove range/map/FromIterator and
+  lower-bound extension control that remains even after guarded `Extend`.
+- Proposed API: `JackVec::from_fn(len, FnMut(usize) -> T) -> JackVec<T>`.
+  Empty length returns the singleton without invoking the generator.
+- Primary workload: generate 1,024 `u64` indices. Baseline is
+  `(0..len).map(f).collect::<JackVec<_>>()`; candidate is `JackVec::from_fn` with
+  the same generator and timing boundary. Require at least 10% improvement in seven
+  paired pinned-Linux rounds, seed 20260805, cleared preload, 100 samples, 3 s
+  warm-up, 5 s measurement, and 100,000 resamples.
+- Secondary workload: four elements; it may not regress beyond 1%. Allocation,
+  initialization, final publication, and output destruction remain inside both
+  measurements; do not move setup across the boundary.
+- Memory and correctness gates: exact capacity, one allocation, no reallocation,
+  one deallocation, zero live bytes, empty/singleton behavior, left-to-right index
+  order, owning exact-once drops, generator panic after a partial prefix, ZST,
+  over-alignment, capacity rejection before invocation, all features/MSRV/docs/
+  Clippy, and strict-provenance Tree Borrows Miri.
+- Code-size gate: compare the focused wrapper and complete executable. Reject an
+  unexplained whole-`.text` increase even if timing passes.
+- Scope: one constructor, two temporary benchmark sizes, and focused lifecycle
+  tests. Do not combine repeat-fill specialization, growth policy, inline scratch,
+  pointer tagging, or sqlparsers integration.
+
 ### Exact macro construction (`perf/exact-macro-construction`)
 
 - Status: accepted; temporary benchmark removed

@@ -375,6 +375,23 @@ fn array_into_jack(c: &mut Criterion) {
     group.finish();
 }
 
+fn from_fn_exact(c: &mut Criterion) {
+    let mut group = c.benchmark_group("from_fn_exact");
+    for &len in &[4_usize, 1_024] {
+        group.throughput(Throughput::Elements(len as u64));
+        group.bench_function(BenchmarkId::from_parameter(len), |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    (0..black_box(len))
+                        .map(|index| black_box(index as u64))
+                        .collect::<JackVec<_>>(),
+                )
+            });
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     nested_construct,
@@ -390,6 +407,7 @@ criterion_group!(
     jack_into_vec,
     jack_into_box,
     vec_into_jack,
-    array_into_jack
+    array_into_jack,
+    from_fn_exact
 );
 criterion_main!(benches);
